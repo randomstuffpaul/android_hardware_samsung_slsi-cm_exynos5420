@@ -1412,10 +1412,12 @@ static void checkMobiCoreVersion(
 
         // Check <t-base version info.
         char *msg;
+        /* FIXME
         if (!checkVersionOkMCI(versionPayload.versionInfo.versionMci, &msg)) {
             LOG_E("checkVersionOkMCI failed - %s", msg);
             failed = true;
         }
+        */
         LOG_I_RELEASE("versionMci - %s", msg);
         if (!checkVersionOkSO(versionPayload.versionInfo.versionSo, &msg)) {
             LOG_E("checkVersionOkSO failed - %s", msg);

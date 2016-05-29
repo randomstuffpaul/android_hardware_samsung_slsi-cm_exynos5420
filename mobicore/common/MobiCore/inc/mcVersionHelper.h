@@ -13,6 +13,14 @@
  */
 #include <stdio.h>
 
+/* Enable this macro to turn on version logging for:
+ * versionMci
+ * versionSo
+ * versionInfo
+ * versionContainer
+ */
+#define VERSION_LOGGING
+
 //lint -emacro(*,MC_CHECK_VERSION) Disable all warnings for this macro.
 //lint -emacro(*,MC_MAKE_VERSION) Disable all warnings for this macro.
 //lint -emacro(*,MC_GET_MAJOR_VERSION) Disable all warnings for this macro.
@@ -80,7 +88,7 @@
  * @param errmsg[out] a message string that contains a log.
  *
  */
-#if !defined(NDEBUG)
+#ifdef VERSION_LOGGING
 #if !defined(TRUSTLET)
 #define MC_CHECK_VERSION(comp, majorRequired, minorRequired) \
     MC_CHECK_VERSION_STATIC(comp, majorRequired, minorRequired) \
@@ -160,7 +168,7 @@
  * @param errmsg[out] a message string that contains a log.
  *
  */
-#if !defined(NDEBUG)
+#ifdef VERSION_LOGGING
 #if !defined(TRUSTLET)
 #define MC_CHECK_DATA_OBJECT_VERSION(comp, majorRequired, minorRequired) \
     MC_CHECK_VERSION_STATIC(comp, majorRequired, minorRequired) \
