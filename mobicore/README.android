@@ -12,7 +12,6 @@ Start MobiCore Daemon
 -b              fork to background
 -m IMAGE        load mobicore from IMAGE to DDR
 -s              disable daemon scheduler(default enabled)
--d SIZE         donate SIZE bytes to mobicore(disabled on most platforms)
 -r DRIVER       load dyamic driver
 
 -b Forks the daemon to background
@@ -31,12 +30,6 @@ Loads the mobicore.img to DDR and starts executing it.
 
 # ./mcDriverDaemon -s
 
--d Sets how much RAM is donated to Mobicore in bytes
-
-# ./mcDriverDaemon -d 1048576
-
-If no -d is specified then the daemon donates 1Mb. The Value 0 disables RAM donation.
-
 -r Loads dynamic driver at startup. The full path of the driver binary must be given, eg. /data/app/driver.drbin
 
 # ./mcDriverDaemon -r /data/app/driver.drbin
@@ -45,8 +38,8 @@ Custom registry locations
 --
 Registry fallback
 
-In case of a Device wipe in Android the /data/app/mcRegistry folder will be deleted with all it's contents. To overcome 
-this the daemon supports a fallback location(eg /system/app/mcRegistry): it first tries to load the trustlet 
+In case of a Device wipe in Android the /data/app/mcRegistry folder will be deleted with all it's contents. To overcome
+this the daemon supports a fallback location(eg /system/app/mcRegistry): it first tries to load the trustlet
 from /data/app/mcRegistry/[uuid].tlbin and if it fails then it tries to read the trustlet from /system/app/mcRegistry/[uuid].tlb
 
 Both paths are completely configurable for the Daemon using 2 environment variables:MC_REGISTRY_PATH and MC_REGISTRY_FALLBACK_PATH
@@ -62,7 +55,7 @@ Custom authtoken path
 
 The authtoken file is created at provisioning and is by default located in /data/app/mcRegistry/00000.authtoken
 
-Because a device wipe could delete this file and make MobiCore unusable a new environment variable has been added to change the 
+Because a device wipe could delete this file and make MobiCore unusable a new environment variable has been added to change the
 default behaviour: MC_AUTH_TOKEN_PATH
 
 $ export MC_AUTH_TOKEN_PATH=/efs

@@ -2,34 +2,37 @@
  * @{
  * @file
  *
- * MobiCore Driver Kernel Module Interface.
+ * <t-base Driver Kernel Module Interface.
  */
 /*
- * <!-- Copyright Giesecke & Devrient GmbH 2009 - 2012 -->
+ * Copyright (c) 2013 TRUSTONIC LIMITED
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote
- *    products derived from this software without specific prior
- *    written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
- * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
- * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * 3. Neither the name of the TRUSTONIC LIMITED nor the names of its
+ *    contributors may be used to endorse or promote products derived from
+ *    this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include <cstdlib>
 
@@ -55,7 +58,7 @@ mcResult_t CMcKMod::mapWsm(
     uint32_t    len,
     uint32_t    *pHandle,
     addr_t      *pVirtAddr,
-    addr_t      *pPhysAddr)
+    uint64_t      *pPhysAddr)
 {
     int ret = 0;
     LOG_V(" mapWsm(): len=%d", len);
@@ -66,9 +69,9 @@ mcResult_t CMcKMod::mapWsm(
     }
 
     // mapping response data is in the buffer
-struct mc_ioctl_map mapParams = {
-    .len = len
-};
+    struct mc_ioctl_map mapParams = {
+        .len = len
+    };
 
     ret = ioctl(fdKMod, MC_IO_MAP_WSM, &mapParams);
     if (ret != 0) {
@@ -84,8 +87,8 @@ struct mc_ioctl_map mapParams = {
     }
 
 
-    LOG_V(" mapped to %p, handle=%d, phys=%p ", virtAddr,
-          mapParams.handle, (addr_t) (mapParams.phys_addr));
+    LOG_V(" mapped to %p, handle=%d, phys=0x%llX ", virtAddr,
+          mapParams.handle, mapParams.phys_addr);
 
     if (pVirtAddr != NULL) {
         *pVirtAddr = virtAddr;
@@ -96,7 +99,7 @@ struct mc_ioctl_map mapParams = {
     }
 
     if (pPhysAddr != NULL) {
-        *pPhysAddr = (addr_t) (mapParams.phys_addr);
+        *pPhysAddr = mapParams.phys_addr;
     }
 
     return 0;
@@ -107,7 +110,7 @@ mcResult_t CMcKMod::mapMCI(
     uint32_t    len,
     uint32_t    *pHandle,
     addr_t      *pVirtAddr,
-    addr_t      *pPhysAddr,
+    uint64_t      *pPhysAddr,
     bool        *pReuse)
 {
     LOG_I("Mapping MCI: len=%d", len);
@@ -136,8 +139,8 @@ mcResult_t CMcKMod::mapMCI(
     mapParams.addr = (unsigned long)virtAddr;
     *pReuse = mapParams.reused;
 
-    LOG_V(" MCI mapped to %p, handle=%d, phys=%p, reused=%s",
-          (void *)mapParams.addr, mapParams.handle, (addr_t) (mapParams.phys_addr),
+    LOG_V(" MCI mapped to %p, handle=%d, phys=0x%llx, reused=%s",
+          (void *)mapParams.addr, mapParams.handle, mapParams.phys_addr,
           mapParams.reused ? "true" : "false");
 
     if (pVirtAddr != NULL) {
@@ -149,7 +152,7 @@ mcResult_t CMcKMod::mapMCI(
     }
 
     if (pPhysAddr != NULL) {
-        *pPhysAddr = (addr_t) (mapParams.phys_addr);
+        *pPhysAddr = mapParams.phys_addr;
     }
 
     // clean memory
@@ -166,7 +169,7 @@ mcResult_t CMcKMod::mapPersistent(
     addr_t      *pPhysAddr)
 {
     // Not currently supported by the driver
-    LOG_E("MobiCore Driver does't support persistent buffers");
+    LOG_E("<t-base Driver doesn't support persistent buffers");
     return MC_DRV_ERR_NOT_IMPLEMENTED;
 }
 
@@ -206,8 +209,7 @@ bool CMcKMod::waitSSIQ(uint32_t *pCnt)
 
 
 //------------------------------------------------------------------------------
-int CMcKMod::fcInit(uint32_t nqOffset, uint32_t nqLength, uint32_t mcpOffset,
-                    uint32_t mcpLength)
+int CMcKMod::fcInit(uint32_t nqLength, uint32_t mcpOffset, uint32_t mcpLength)
 {
     int ret = 0;
 
@@ -217,7 +219,7 @@ int CMcKMod::fcInit(uint32_t nqOffset, uint32_t nqLength, uint32_t mcpOffset,
 
     // Init MC with NQ and MCP buffer addresses
     struct mc_ioctl_init fcInitParams = {
-        .nq_offset = nqOffset,
+        .nq_offset = 0,
         .nq_length = nqLength,
         .mcp_offset = mcpOffset,
         .mcp_length = mcpLength
@@ -335,7 +337,7 @@ mcResult_t CMcKMod::registerWsmL2(
     uint32_t    len,
     uint32_t    pid,
     uint32_t    *pHandle,
-    addr_t      *pPhysWsmL2)
+    uint64_t      *pPhysWsmL2)
 {
     LOG_I(" Registering virtual buffer at %p, len=%d as World Shared Memory", buffer, len);
 
@@ -352,18 +354,18 @@ mcResult_t CMcKMod::registerWsmL2(
 
     int ret = ioctl(fdKMod, MC_IO_REG_WSM, &params);
     if (ret != 0) {
-        LOG_ERRNO("ioctl MC_IO_UNREG_WSM");
+        LOG_ERRNO("ioctl MC_IO_REG_WSM");
         return MAKE_MC_DRV_KMOD_WITH_ERRNO(errno);
     }
 
-    LOG_I(" Registered, handle=%d, L2 phys=0x%x ", params.handle, params.table_phys);
+    LOG_I(" Registered, handle=%d, L2 phys=0x%llx ", params.handle, params.table_phys);
 
     if (pHandle != NULL) {
         *pHandle = params.handle;
     }
 
     if (pPhysWsmL2 != NULL) {
-        *pPhysWsmL2 = (addr_t) params.table_phys;
+        *pPhysWsmL2 = params.table_phys;
     }
 
     return MC_DRV_OK;
@@ -403,7 +405,7 @@ mcResult_t CMcKMod::lockWsmL2(uint32_t handle)
 
     ret = ioctl(fdKMod, MC_IO_LOCK_WSM, handle);
     if (ret != 0) {
-        LOG_ERRNO("ioctl MC_IO_UNREG_WSM");
+        LOG_ERRNO("ioctl MC_IO_LOCK_WSM");
         LOG_E("ret = %d", ret);
     }
 
@@ -433,7 +435,7 @@ mcResult_t CMcKMod::unlockWsmL2(uint32_t handle)
 
 
 //------------------------------------------------------------------------------
-addr_t CMcKMod::findWsmL2(uint32_t handle, int fd)
+uint64_t CMcKMod::findWsmL2(uint32_t handle, int fd)
 {
     int ret = 0;
 
@@ -441,12 +443,13 @@ addr_t CMcKMod::findWsmL2(uint32_t handle, int fd)
 
     wsm.handle = handle;
     wsm.fd = fd;
+    wsm.phys = 0;
 
     LOG_I(" Resolving the WSM l2 for handle=%u", handle);
 
     if (!isOpen()) {
         LOG_E("no connection to kmod");
-        return NULL;
+        return 0;
     }
 
     ret = ioctl(fdKMod, MC_IO_RESOLVE_WSM, &wsm);
@@ -456,30 +459,32 @@ addr_t CMcKMod::findWsmL2(uint32_t handle, int fd)
         return 0;
     }
 
-    return (addr_t)wsm.phys;
+    return wsm.phys;
 }
 
 //------------------------------------------------------------------------------
-mcResult_t CMcKMod::findContiguousWsm(uint32_t handle, int fd, addr_t *phys, uint32_t *len)
+mcResult_t CMcKMod::findContiguousWsm(uint32_t handle, int fd, uint64_t *phys, uint32_t *len)
 {
     mcResult_t ret = MC_DRV_OK;
     struct mc_ioctl_resolv_cont_wsm wsm;
 
     wsm.handle = handle;
+    wsm.phys = 0;
+    wsm.length = 0;
     wsm.fd = fd;
 
     LOG_I(" Resolving the contiguous WSM l2 for handle=%u", handle);
 
     if (!isOpen()) {
         LOG_E("no connection to kmod");
-        return NULL;
+        return MC_DRV_ERR_KMOD_NOT_OPEN;
     }
 
     ret = ioctl(fdKMod, MC_IO_RESOLVE_CONT_WSM, &wsm);
     if (ret != 0) {
-        LOG_ERRNO("ioctl MC_IO_RESOLVE_CONT_WSM");
+        LOG_W("ioctl MC_IO_RESOLVE_CONT_WSM failed with \"%s\"(errno %i)", strerror(errno), errno);
     } else {
-        *phys = (addr_t)wsm.phys;
+        *phys = wsm.phys;
         *len = wsm.length;
     }
 
@@ -500,7 +505,7 @@ mcResult_t CMcKMod::cleanupWsmL2(void)
 
     ret = ioctl(fdKMod, MC_IO_CLEAN_WSM, 0);
     if (ret != 0) {
-        LOG_ERRNO("ioctl MC_IO_UNREG_WSM");
+        LOG_ERRNO("ioctl MC_IO_CLEAN_WSM");
         LOG_E("ret = %d", ret);
     }
 
@@ -521,34 +526,12 @@ mcResult_t CMcKMod::setupLog(void)
 
     ret = ioctl(fdKMod, MC_IO_LOG_SETUP, 0);
     if (ret != 0) {
-        LOG_ERRNO("ioctl MC_IO_UNREG_WSM");
-        LOG_E("ret = %d", ret);
+        LOG_W("ioctl MC_IO_LOG_SETUP failed with \"%s\"(errno %i)", strerror(errno), errno);
     }
 
     return ret;
 }
 
-//------------------------------------------------------------------------------
-int CMcKMod::fcExecute(addr_t startAddr, uint32_t areaLength)
-{
-    int ret = 0;
-    struct mc_ioctl_execute params = {
-        .phys_start_addr = (uint32_t)startAddr,
-        .length = areaLength
-    };
-
-    if (!isOpen()) {
-        LOG_E("no connection to kmod");
-        return MC_DRV_ERR_KMOD_NOT_OPEN;
-    }
-
-    ret = ioctl(fdKMod, MC_IO_EXECUTE, &params);
-    if (ret != 0) {
-        LOG_ERRNO("ioctl MC_IO_EXECUTE");
-    }
-
-    return ret;
-}
 //------------------------------------------------------------------------------
 bool CMcKMod::checkVersion(void)
 {

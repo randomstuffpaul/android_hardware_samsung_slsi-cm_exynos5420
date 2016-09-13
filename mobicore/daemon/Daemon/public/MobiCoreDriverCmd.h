@@ -2,31 +2,35 @@
  * @{
  * @file
  *
- * <!-- Copyright Giesecke & Devrient GmbH 2009 - 2012 -->
+ *
+ * Copyright (c) 2013 TRUSTONIC LIMITED
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote
- *    products derived from this software without specific prior
- *    written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
- * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
- * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * 3. Neither the name of the TRUSTONIC LIMITED nor the names of its
+ *    contributors may be used to endorse or promote products derived from
+ *    this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #ifndef MCDAEMON_H_
 #define MCDAEMON_H_
@@ -52,6 +56,7 @@ typedef enum {
     MC_DRV_CMD_GET_VERSION          = 10,
     MC_DRV_CMD_GET_MOBICORE_VERSION = 11,
     MC_DRV_CMD_OPEN_TRUSTLET        = 12,
+    MC_DRV_CMD_OPEN_TRUSTED_APP     = 13,
 
     // Registry Commands
 
@@ -73,14 +78,17 @@ typedef enum {
     MC_DRV_REG_DELETE_TL_CONT       = 0x10000B,
     // Shared Object Data write
     MC_DRV_REG_WRITE_SO_DATA        = 0x10000C,
+    // TA Blob store
+    MC_DRV_REG_STORE_TA_BLOB        = 0x10000D,
+
 } mcDrvCmd_t;
 
 typedef struct {
-    uint32_t  commandId;
+    mcDrvCmd_t  commandId;
 } mcDrvCommandHeader_t;
 
 typedef struct {
-    /* MobiCore Daemon uses Client API return codes also in commands between Daemon and Client Library. */
+    /* <t-base Daemon uses Client API return codes also in commands between Daemon and Client Library. */
     uint32_t  responseId;
 } mcDrvResponseHeader_t;
 
@@ -150,6 +158,16 @@ typedef struct {
 } mcDrvRspOpenTrustlet_t;
 
 //--------------------------------------------------------------
+struct MC_DRV_CMD_OPEN_TRUSTED_APP_struct {
+    uint32_t  commandId;
+    uint32_t  deviceId;
+    mcUuid_t  uuid;
+    uint32_t  tci;
+    uint32_t  handle;
+    uint32_t  len;
+};
+
+//--------------------------------------------------------------
 struct MC_DRV_CMD_CLOSE_SESSION_struct {
     uint32_t  commandId;
     uint32_t  sessionId;
@@ -172,7 +190,7 @@ struct MC_DRV_CMD_MAP_BULK_BUF_struct {
     uint32_t  commandId;
     uint32_t  sessionId;
     uint32_t  handle;
-    uint32_t  pAddrL2;
+    uint32_t  rfu;
     uint32_t  offsetPayload;
     uint32_t  lenBulkMem;
 };
@@ -246,6 +264,7 @@ typedef union {
     MC_DRV_CMD_CLOSE_DEVICE_struct      mcDrvCmdCloseDevice;
     MC_DRV_CMD_OPEN_SESSION_struct      mcDrvCmdOpenSession;
     MC_DRV_CMD_OPEN_TRUSTLET_struct     mcDrvCmdOpenTrustlet;
+    MC_DRV_CMD_OPEN_TRUSTED_APP_struct  mcDrvCmdOpenTrustedApp;
     MC_DRV_CMD_CLOSE_SESSION_struct     mcDrvCmdCloseSession;
     MC_DRV_CMD_NQ_CONNECT_struct        mcDrvCmdNqConnect;
     MC_DRV_CMD_NOTIFY_struct            mcDrvCmdNotify;

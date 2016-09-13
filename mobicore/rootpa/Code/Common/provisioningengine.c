@@ -43,21 +43,21 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "provisioningengine.h"
 
 
+static const char* const SE_URL="https://se.cgbe.trustonic.com:8443/service-enabler/enrollment/"; // note that there has to be slash at the end since we are adding suid to it next
 
-static const char* const SE_URL="https://se.cgbe.trustonic.com:8443/"; // note that there has to be slash at the end since we are adding suid to it next
-//static const char* const SE_URL="http://se.cgbe.trustonic.com:8080/"; // note that there has to be slash at the end since we are adding suid to it next
 
 static const char* const RELATION_SELF  =      "relation/self";
 static const char* const RELATION_SYSTEMINFO = "relation/system_info";
 static const char* const RELATION_RESULT   =   "relation/command_result";
 static const char* const RELATION_NEXT    =    "relation/next";
-static const uint8_t* const SLASH="/";
+static const uint8_t* const SLASH= (uint8_t*)"/";
 
 static const char* const RELATION_INITIAL_POST="initial_post"; // this will make us to send HTTP GET, which
                                       // is the right thing to do since we do not
                                       // have any data to send to SE, this will need to be different in RootPA initiated trustet installation
 static const char* const RELATION_INITIAL_DELETE="initial_delete"; // this will make us to send HTTP DELETE
 
+#define INT_STRING_LENGTH 12 // (32 bit <= 10 decimal numbers) + "/" + trailing zero.
 #define INITIAL_URL_BUFFER_LENGTH 255
 
 static char initialUrl_[INITIAL_URL_BUFFER_LENGTH];
@@ -73,7 +73,7 @@ void addSlashToUri(char* uriP)
 
 void addBytesToUri(char* uriP, uint8_t* bytes, uint32_t length, bool uuid )
 {
-    LOGD(">>add bytes to URI %d", length);
+    LOGD(">>addBytesToUri %d", length);
     int uriidx=strlen(uriP);
     int i;
     uint8_t singleNumber=0;
@@ -85,21 +85,22 @@ void addBytesToUri(char* uriP, uint8_t* bytes, uint32_t length, bool uuid )
         singleNumber=(bytes[i]&0x0F);
         singleNumber=((singleNumber<0xA)?(singleNumber+0x30):(singleNumber+0x57));
         uriP[uriidx++]=singleNumber;
+
         if(true==uuid && (3 == i || 5 == i || 7 == i || 9 == i))
         {
             uriP[uriidx++]='-';
         }
     }
-    LOGD("<<add bytes to URI %s %d", uriP, uriidx);
+    LOGD("<<addBytesToUri %s %d", uriP, uriidx);
 }
 
 void addIntToUri(char* uriP, uint32_t addThis)
 {
-    char intInString[10];
-    memset(intInString, 0, 10);
+    char intInString[INT_STRING_LENGTH];
+    memset(intInString, 0, INT_STRING_LENGTH);
     // using signed integer since this is how SE wants it
-    sprintf(intInString, "/%d", addThis);
-    strcpy((uriP+strlen(uriP)), intInString);
+    snprintf(intInString, INT_STRING_LENGTH, "/%d", addThis);
+    strncpy((uriP+strlen(uriP)), intInString, INT_STRING_LENGTH); // we have earlier made sure there is enough room in uriP, using strncpy here instead strcpy is just to avoid static analysis comments
     LOGD("add int to URI %s %d", uriP, addThis);
 }
 
@@ -154,10 +155,11 @@ char* createBasicLink(mcSuid_t suid)
     urlLength=strlen(initialUrl_) + (sizeof(mcSuid_t)*2) + (sizeof(mcSpid_t)*2) + (sizeof(mcUuid_t)*2)+6; //possible slash and end zero and four dashes
     tmpLinkP=malloc(urlLength);
     memset(tmpLinkP,0,urlLength);
-    strcpy(tmpLinkP, initialUrl_);
+    strncpy(tmpLinkP, initialUrl_, urlLength);
     addBytesToUri(tmpLinkP, (uint8_t*) &suid, sizeof(suid), false);
     return tmpLinkP;
 }
+
 
 void doProvisioningWithSe(
     mcSpid_t spid,
@@ -185,10 +187,6 @@ void doProvisioningWithSe(
     const char* usedCommandP=NULL;
 
     callbackP_=callbackP;
-    if(NULL==callbackP)
-    {
-        LOGE("No callbackP, can not respond to caller, this should not happen!");
-    }
 
     if(empty(initialUrl_))
     {
@@ -237,15 +235,15 @@ void doProvisioningWithSe(
         }
     }
 
-// recovery from factory reset
-    if(factoryResetAssumed() && relP != RELATION_INITIAL_DELETE)
+// begin recovery from factory reset 1
+    if(factoryResetAssumed() && relP != RELATION_INITIAL_DELETE && workToDo == true)
     {
         pendingLinkP=linkP;
         pendingRelP=relP;
         relP=RELATION_INITIAL_DELETE;
         linkP=createBasicLink(suid);
     }
-// recovery from factory reset
+// end recovery from factory reset 1
 
     while(workToDo)
     {
@@ -256,10 +254,10 @@ void doProvisioningWithSe(
 
         if(NULL==relP)
         {
-// recovery from factory reset
+// begin recovery from factory reset 2
             if(pendingLinkP!=NULL && pendingRelP!=NULL)
             {
-                free((char*)linkP);
+                free((void*)linkP);
                 linkP=pendingLinkP;
                 relP=pendingRelP;
                 pendingLinkP=NULL;
@@ -267,7 +265,7 @@ void doProvisioningWithSe(
                 workToDo=true;
                 continue;
             }
-// recovery from factory reset
+// end recovery from factory reset 2
 
 
             callbackP(FINISHED_PROVISIONING, ROOTPA_OK, NULL); // this is the only place where we can be sure
@@ -281,15 +279,18 @@ void doProvisioningWithSe(
         }
         else if(strstr(relP, RELATION_SELF))  // do it again. So we need to restore pointer to previous stuff.
         {
-            cleanup((char**) &linkP, (char**) &relP, (char**) &commandP);
-
-            relP=usedRelP;
-            linkP=usedLinkP;
-            commandP=usedCommandP;
+            if(relP!=usedRelP && linkP!=usedLinkP && commandP!=usedCommandP)
+            {
+                cleanup((char**) &linkP, (char**) &relP, (char**) &commandP);
+                relP=usedRelP;
+                linkP=usedLinkP;
+                commandP=usedCommandP;
+            }
         }
         else
         {
-            // store the current pointers to "used" pointers just before using them
+            // store the current pointers to "used" pointers just before using them, the current ones will then be updated
+            // this is to prepare for the case where we receive RELATION_SELF as next relation.
             usedLinkP=linkP;            // originally linkP
             usedRelP=relP;              // originally NULL
             usedCommandP=commandP;      // originally NULL
@@ -397,7 +398,7 @@ void doProvisioningWithSe(
                 workToDo=false;
             }
 
-            LOGD("end of provisioning loop work to do: %d, responseP %ld", workToDo, responseP);
+            LOGD("end of provisioning loop work to do: %d, responseP %ld", workToDo, (long int) responseP);
         }
 
         // last round cleaning in order to make sure both original and user pointers are released, but only once
@@ -427,13 +428,14 @@ void doProvisioningWithSe(
         }
 
         // responseP can be freed at every round
-        free((char*)responseP);
+        free((void*)responseP);
         responseP=NULL;
 
     } // while
     closeSeClientAndCleanup();
 
-
+    if(responseP!=NULL) free((void*)responseP);
+    if(linkP!=NULL) free((void*)linkP);
     if(ROOTPA_OK != ret)  LOGE("doProvisioningWithSe had some problems: %d",ret );
     LOGD("<<doProvisioningWithSe ");
     return;

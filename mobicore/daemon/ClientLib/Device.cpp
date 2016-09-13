@@ -6,31 +6,35 @@
  *
  * Device and Trustlet Session management Funtions.
  *
- * <!-- Copyright Giesecke & Devrient GmbH 2009 - 2012 -->
+ *
+ * Copyright (c) 2013 TRUSTONIC LIMITED
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote
- *    products derived from this software without specific prior
- *    written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
- * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
- * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * 3. Neither the name of the TRUSTONIC LIMITED nor the names of its
+ *    contributors may be used to endorse or promote products derived from
+ *    this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include <stdint.h>
 #include <vector>
@@ -154,7 +158,7 @@ mcResult_t Device::allocateContiguousWsm(uint32_t len, CWsm **wsm)
     // Allocate shared memory
     addr_t    virtAddr;
     uint32_t  handle;
-    addr_t    physAddr;
+    uint64_t    physAddr;
     mcResult_t  ret;
 
     assert(wsm != NULL);
@@ -168,7 +172,7 @@ mcResult_t Device::allocateContiguousWsm(uint32_t len, CWsm **wsm)
         return ret;
     }
 
-    LOG_I(" mapped handle %d to %p, phys=%p ", handle, virtAddr, physAddr);
+    LOG_I(" mapped handle %d to %p, phys=%#llx  ", handle, virtAddr, physAddr);
 
     // Register (vaddr,paddr) with device
     *wsm = new CWsm(virtAddr, len, handle, physAddr);
@@ -195,7 +199,7 @@ mcResult_t Device::freeContiguousWsm(CWsm_ptr  pWsm)
     // We just looked this up using findContiguousWsm
     assert(ret == MC_DRV_OK);
 
-    LOG_I(" unmapping handle %d from %p, phys=%p",
+    LOG_I(" unmapping handle %d from %p, phys=%#llx",
           pWsm->handle, pWsm->virtAddr, pWsm->physAddr);
 
     ret = pMcKMod->free(pWsm->handle, pWsm->virtAddr, pWsm->len);
@@ -216,6 +220,10 @@ CWsm_ptr Device::findContiguousWsm(addr_t  virtAddr)
 {
     CWsm_ptr pWsm = NULL;
 
+    if (virtAddr == NULL) {
+        return pWsm;
+    }
+
     for ( wsmIterator_t iterator = wsmL2List.begin();
             iterator != wsmL2List.end();
             ++iterator) {
@@ -233,13 +241,13 @@ CWsm_ptr Device::findContiguousWsm(addr_t  virtAddr)
 //------------------------------------------------------------------------------
 mcResult_t Device::mapBulkBuf(addr_t buf, uint32_t len, BulkBufferDescriptor **blkBuf)
 {
-    addr_t pPhysWsmL2;
+    uint64_t PhysWsmL2;
     uint32_t handle;
 
     *blkBuf = NULL;
 
     // Prepare the interface structure for memory registration in Kernel Module
-    mcResult_t ret = pMcKMod->registerWsmL2(buf, len, 0, &handle, &pPhysWsmL2);
+    mcResult_t ret = pMcKMod->registerWsmL2(buf, len, 0, &handle, &PhysWsmL2);
     if (ret != MC_DRV_OK) {
         LOG_V(" mcKMod->registerWsmL2() failed with %x", ret);
         return ret;
@@ -248,7 +256,7 @@ mcResult_t Device::mapBulkBuf(addr_t buf, uint32_t len, BulkBufferDescriptor **b
     LOG_V(" addBulkBuf - Handle of L2 Table = %u", handle);
 
     // Create new descriptor - secure virtual virtual set to 0, unknown!
-    *blkBuf = new BulkBufferDescriptor(buf, 0x0, len, handle, pPhysWsmL2);
+          *blkBuf = new BulkBufferDescriptor(buf, 0x0, len, handle);
 
     return MC_DRV_OK;
 }

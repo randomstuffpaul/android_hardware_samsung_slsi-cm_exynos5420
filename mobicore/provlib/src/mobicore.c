@@ -110,9 +110,14 @@ bool mccmOpen ( void )
 
 void mccmClose ( void )
 {
+  mcResult_t          result;
   LOG_d("++++ ENTERED mccmClose.");
 
-  mcCloseSession(&g_mccm.sess);
+  result = mcCloseSession(&g_mccm.sess);
+  if (MC_DRV_OK != result)
+  {
+	  LOG_e("mcCloseSession returned error %u",result);
+  }
 
   if (NULL!=g_mccm.cmp)
     mcFreeWsm(MC_DEVICE_ID_DEFAULT,(uint8_t*)g_mccm.cmp);

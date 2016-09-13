@@ -3,7 +3,7 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE      := libgdmcprov
-LOCAL_MODULE_TAGS := eng
+LOCAL_MODULE_TAGS := debug eng optional
 
 LOCAL_C_INCLUDES  := $(LOCAL_PATH)/../inc_private \
                      $(LOCAL_PATH)/../inc_public \

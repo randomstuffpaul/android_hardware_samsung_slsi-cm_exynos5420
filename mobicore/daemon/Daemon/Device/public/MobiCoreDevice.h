@@ -7,31 +7,34 @@
  * Concrete devices implementing the communication behavior for the platforms have to be derived
  * from this.
  *
- * <!-- Copyright Giesecke & Devrient GmbH 2009 - 2012 -->
+ * Copyright (c) 2013 TRUSTONIC LIMITED
+ * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote
- *    products derived from this software without specific prior
- *    written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS
- * OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
- * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * 3. Neither the name of the TRUSTONIC LIMITED nor the names of its
+ *    contributors may be used to endorse or promote products derived from
+ *    this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #ifndef MOBICOREDEVICE_H_
 #define MOBICOREDEVICE_H_
@@ -52,6 +55,7 @@
 #include "ExcDevice.h"
 #include "DeviceScheduler.h"
 #include "DeviceIrqHandler.h"
+#include "TAExitHandler.h"
 #include "NotificationQueue.h"
 #include "TrustletSession.h"
 #include "mcVersionInfo.h"
@@ -60,11 +64,17 @@
 class MobiCoreDevice;
 
 typedef struct {
-    addr_t baseAddr;    /**< Physical address of the data to load. */
+    uint64_t baseAddr;    /**< Physical address of the data to load. */
     uint32_t offs;      /**< Offset to the data. */
     uint32_t len;       /**< Length of the data to load. */
     mclfHeader_ptr tlHeader; /**< Pointer to trustlet header. */
 } loadDataOpenSession_t, *loadDataOpenSession_ptr;
+
+typedef struct {
+    uint64_t addr;      /**< Physical address of the data to load. */
+    uint64_t offs;      /**< Offset to the data. */
+    uint64_t len;       /**< Length of the data to load. */
+} loadTokenData_t, *loadTokenData_ptr;
 
 /**
  * Factory method to return the platform specific MobiCore device.
@@ -72,7 +82,7 @@ typedef struct {
  */
 extern MobiCoreDevice *getDeviceInstance(void);
 
-class MobiCoreDevice : public DeviceScheduler, public DeviceIrqHandler
+class MobiCoreDevice : public DeviceScheduler, public DeviceIrqHandler, public TAExitHandler
 {
 
 protected:
@@ -86,6 +96,7 @@ protected:
     mcVersionInfo_t     *mcVersionInfo; /**< MobiCore version info. */
     bool                mcFault; /**< Signal RTM fault */
     bool                mciReused; /**< Signal restart of Daemon. */
+    CMutex              mutex_connection; // Mutex to share session->notificationConnection for GP cases
 
     /* In a special case a Trustlet can create a race condition in the daemon.
      * If at Trustlet start it detects an error of some sort and calls the
@@ -103,6 +114,21 @@ protected:
 
     MobiCoreDevice();
 
+    mcResult_t closeSessionInternal(
+        TrustletSession* session);
+
+    mcResult_t sendSessionCloseCmd(
+        uint32_t sessionId);
+
+    TrustletSession* findSession(
+        Connection *deviceConnection,
+        uint32_t sessionId);
+
+    TrustletSession *getTrustletSession(
+        uint32_t sessionId);
+
+    mcResult_t mshNotifyAndWait(void);
+
     void signalMcpNotification(void);
 
     bool waitMcpNotification(void);
@@ -115,12 +141,9 @@ private:
     virtual bool waitSsiq(void) = 0;
 
 public:
+    CMutex mutex_mcp; // This mutex should be taken before any access to below functions
+
     virtual ~MobiCoreDevice();
-
-    TrustletSession *getTrustletSession(uint32_t sessionId);
-
-    void cleanSessionBuffers(TrustletSession *session);
-    void removeTrustletSession(uint32_t sessionId);
 
     Connection *getSessionConnection(uint32_t sessionId, notification_t *notification);
 
@@ -135,27 +158,27 @@ public:
                            uint32_t                        tciOffset,
                            mcDrvRspOpenSessionPayload_ptr  pRspOpenSessionPayload);
 
+    mcResult_t checkLoad(loadDataOpenSession_ptr           pLoadDataOpenSession,
+                         mcDrvRspOpenSessionPayload_ptr   pRspOpenSessionPayload);
+
+
     TrustletSession *registerTrustletConnection(Connection *connection,
             MC_DRV_CMD_NQ_CONNECT_struct  *cmdNqConnect);
 
-    // Internal function
-    mcResult_t closeSession(uint32_t sessionId);
 
-    // Do more checks
     mcResult_t closeSession(Connection *deviceConnection, uint32_t sessionId);
 
     virtual mcResult_t notify(Connection *deviceConnection, uint32_t  sessionId);
+
     virtual void notify(uint32_t  sessionId) = 0;
 
-    mcResult_t mapBulk(Connection *deviceConnection, uint32_t sessionId, uint32_t handle, uint32_t pAddrL2,
+    mcResult_t mapBulk(Connection *deviceConnection, uint32_t sessionId, uint32_t handle, uint64_t pAddrL2,
                         uint32_t offsetPayload, uint32_t lenBulkMem, uint32_t *secureVirtualAdr);
 
     mcResult_t unmapBulk(Connection *deviceConnection, uint32_t sessionId, uint32_t handle,
-                        uint32_t secureVirtualAdr, uint32_t lenBulkMem);
+                         uint32_t secureVirtualAdr, uint32_t lenBulkMem);
 
     void start();
-
-    void donateRam(const uint32_t donationSize);
 
     mcResult_t getMobiCoreVersion(mcDrvRspGetMobiCoreVersionPayload_ptr pRspGetMobiCoreVersionPayload);
 
@@ -204,9 +227,9 @@ public:
 
     virtual bool unlockWsmL2(uint32_t handle) = 0;
 
-    virtual addr_t findWsmL2(uint32_t handle, int fd) = 0;
+    virtual uint64_t findWsmL2(uint32_t handle, int fd) = 0;
 
-    virtual bool findContiguousWsm(uint32_t handle, int fd, addr_t *phys, uint32_t *len) = 0;
+    virtual bool findContiguousWsm(uint32_t handle, int fd, uint64_t *phys, uint32_t *len) = 0;
 
     /**
      * Cleanup all orphaned bulk buffers.
@@ -220,9 +243,9 @@ public:
      */
     virtual CWsm_ptr allocateContiguousPersistentWsm(uint32_t len) = 0;
 
-    bool mobicoreAlreadyRunning(void) {
-        return mciReused;
-    }
+    mcResult_t loadToken(Connection        *deviceConnection,
+                         loadTokenData_ptr pLoadTokenData);
+
 };
 
 #endif /* MOBICOREDEVICE_H_ */

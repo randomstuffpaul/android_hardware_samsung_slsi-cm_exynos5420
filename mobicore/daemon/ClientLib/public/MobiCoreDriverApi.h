@@ -9,10 +9,10 @@
  *
  * MobiCore Driver API.
  *
- * The MobiCore (MC) Driver API provides access functions to the MobiCore runtime environment and the contained Trustlets.
+ * The MobiCore (MC) Driver API provides access functions to the t-base trusted execution environment and the contained Trusted Applications.
  *
  * @image html DoxyOverviewDrvApi500x.png
- * @image latex DoxyOverviewDrvApi500x.png "MobiCore Overview" width=12cm
+ * @image latex DoxyOverviewDrvApi500x.png "t-base Overview" width=12cm
  */
 /* <!-- Copyright Trustonic 2013-2014 -->
  *
@@ -51,7 +51,9 @@
 
 
 #include <stdint.h>
+#ifndef WIN32
 #include <stdbool.h>
+#endif
 
 #include "mcUuid.h"
 #include "mcSpid.h"
@@ -103,7 +105,7 @@ typedef uint32_t mcResult_t;
 
 // those should become MCP or even detail codes on top of MC_DRV_ERR_MCP_ERROR
 #define MC_DRV_ERR_WRONG_PUBLIC_KEY                 0x00000019 /**< System Trustlet public key is wrong. */
-#define MC_DRV_ERR_CONTAINER_TYPE_MISMATCH          0x0000001a /**< Wrong containter type(s). */
+#define MC_DRV_ERR_CONTAINER_TYPE_MISMATCH          0x0000001a /**< Wrong container type(s). */
 #define MC_DRV_ERR_CONTAINER_LOCKED                 0x0000001b /**< Container is locked (or not activated). */
 #define MC_DRV_ERR_SP_NO_CHILD                      0x0000001c /**< SPID is not registered with root container. */
 #define MC_DRV_ERR_TL_NO_CHILD                      0x0000001d /**< UUID is not registered with sp container. */
@@ -124,17 +126,24 @@ typedef uint32_t mcResult_t;
 #define MC_DRV_ERR_WSM_NOT_FOUND                    MC_DRV_ERR_INVALID_PARAMETER /**< Requested TCI was not allocated with mallocWsm(). */
 #define MC_DRV_ERR_TCI_GREATER_THAN_WSM             MC_DRV_ERR_INVALID_PARAMETER /**< Requested TCI length is bigger than allocated WSM. */
 #define MC_DRV_ERR_TRUSTLET_NOT_FOUND               MC_DRV_ERR_INVALID_DEVICE_FILE /** < Trustlet could not be found in mcRegistry. */
+#define MC_DRV_ERR_TRUSTED_APPLICATION_NOT_FOUND    MC_DRV_ERR_TRUSTLET_NOT_FOUND /** < Trusted Application could not be found in mcRegistry. */
 #define MC_DRV_ERR_DAEMON_KMOD_ERROR                MC_DRV_ERR_DAEMON_UNREACHABLE /**< Daemon cannot use Kernel module as expected. */
 #define MC_DRV_ERR_DAEMON_MCI_ERROR                 MC_DRV_ERR_DAEMON_UNREACHABLE /**< Daemon cannot use MCI as expected. */
 #define MC_DRV_ERR_MCP_ERROR                        MC_DRV_ERR_DAEMON_UNREACHABLE /**< MobiCore Control Protocol error. See MC_DRV_ERROR_MCP(). */
 #define MC_DRV_ERR_INVALID_LENGTH                   MC_DRV_ERR_NO_FREE_MEMORY /**< Invalid length. */
 #define MC_DRV_ERR_KMOD_NOT_OPEN                    MC_DRV_ERR_NO_FREE_MEMORY /**< Device not open. */
-#define MC_DRV_ERR_BUFFER_ALREADY_MAPPED            MC_DRV_ERR_BULK_MAPPING /**< Buffer is already mapped to this Trustlet. */
+#define MC_DRV_ERR_BUFFER_ALREADY_MAPPED            MC_DRV_ERR_BULK_MAPPING /**< Buffer is already mapped to this Trusted Application. */
 #define MC_DRV_ERR_BLK_BUFF_NOT_FOUND               MC_DRV_ERR_BULK_UNMAPPING /**< Unable to find internal handle for buffer. */
 
 #define MC_DRV_ERR_DAEMON_DEVICE_NOT_OPEN           0x00000021 /**< No device associated with connection. */
 #define MC_DRV_ERR_DAEMON_WSM_HANDLE_NOT_FOUND      MC_DRV_ERR_WSM_NOT_FOUND /**< Daemon could not find WSM handle. */
 #define MC_DRV_ERR_DAEMON_UNKNOWN_SESSION           MC_DRV_ERR_UNKNOWN_SESSION /**< The specified session is unknown to Daemon. */
+
+#if TBASE_API_LEVEL >= 3
+// Installation errors
+#define MC_DRV_ERR_TA_HEADER_ERROR                  0x00000021 /**< TA blob header is incorrect. */
+#define MC_DRV_ERR_TA_ATTESTATION_ERROR             0x00000022 /**< TA blob attestation is incorrect. */
+#endif /* TBASE_API_LEVEL */
 
 #define MAKE_MC_DRV_MCP_ERROR(mcpCode)              (MC_DRV_ERR_MCP_ERROR | ((mcpCode&0x000FFFFF)<<8))
 #define MAKE_MC_DRV_KMOD_WITH_ERRNO(theErrno)       (MC_DRV_ERR_KERNEL_MODULE| (((theErrno)&0x0000FFFF)<<16))
@@ -148,21 +157,21 @@ typedef enum {
 
 
 /** Structure of Session Handle, includes the Session ID and the Device ID the Session belongs to.
- * The session handle will be used for session-based MobiCore communication.
- * It will be passed to calls which address a communication end point in the MobiCore environment.
+ * The session handle will be used for session-based t-base communication.
+ * It will be passed to calls which address a communication end point in the t-base environment.
  */
 typedef struct {
-    uint32_t sessionId; /**< MobiCore session ID */
+    uint32_t sessionId; /**< t-base session ID */
     uint32_t deviceId; /**< Device ID the session belongs to */
 } mcSessionHandle_t;
 
-/** Information structure about additional mapped Bulk buffer between the Trustlet Connector (Nwd) and
- * the Trustlet (Swd). This structure is initialized from a Trustlet Connector by calling mcMap().
- * In order to use the memory within a Trustlet the Trustlet Connector has to inform the Trustlet with
+/** Information structure about additional mapped Bulk buffer between the Client Application (NWd) and
+ * the Trusted Application (SWd). This structure is initialized from a Client Application by calling mcMap().
+ * In order to use the memory within a Trusted Application the Client Application has to inform the Trusted Application with
  * the content of this structure via the TCI.
  */
 typedef struct {
-    void *sVirtualAddr;         /**< The virtual address of the Bulk buffer regarding the address space of the Trustlet, already includes a possible offset! */
+    void *sVirtualAddr;         /**< The virtual address of the Bulk buffer regarding the address space of the Trusted Application, already includes a possible offset! */
     uint32_t sVirtualLen;       /**< Length of the mapped Bulk buffer */
 } mcBulkMap_t;
 
@@ -172,16 +181,18 @@ typedef struct {
 #define MC_NO_TIMEOUT              0   /**< Do not wait for a response of the MC. */
 #define MC_MAX_TCI_LEN             0x100000 /**< TCI/DCI must not exceed 1MiB */
 
+#ifndef WIN32
 /* Mark only the following functions for export */
 #pragma GCC visibility push(default)
+#endif
 
-/** Open a new connection to a MobiCore device.
+/** Open a new connection to a t-base device.
  *
  * mcOpenDevice() initializes all device specific resources required to communicate
- * with an MobiCore instance located on the specified device in the system. If the device
+ * with an t-base instance located on the specified device in the system. If the device
  * does not exist the function will return MC_DRV_ERR_UNKNOWN_DEVICE.
  *
- * @param [in] deviceId Identifier for the MobiCore device to be used. MC_DEVICE_ID_DEFAULT refers to the default device.
+ * @param [in] deviceId Identifier for the t-base device to be used. MC_DEVICE_ID_DEFAULT refers to the default device.
  *
  * @return MC_DRV_OK if operation has been successfully completed.
  * @return MC_DRV_ERR_INVALID_OPERATION if device already opened.
@@ -195,12 +206,12 @@ __MC_CLIENT_LIB_API mcResult_t mcOpenDevice(
     uint32_t deviceId
 );
 
-/** Close the connection to a MobiCore device.
+/** Close the connection to a t-base device.
  * When closing a device, active sessions have to be closed beforehand.
  * Resources associated with the device will be released.
  * The device may be opened again after it has been closed.
  *
- * @param [in] deviceId Identifier for the MobiCore device. MC_DEVICE_ID_DEFAULT refers to the default device.
+ * @param [in] deviceId Identifier for the t-base device. MC_DEVICE_ID_DEFAULT refers to the default device.
  *
  * @return MC_DRV_OK if operation has been successfully completed.
  * @return MC_DRV_ERR_UNKNOWN_DEVICE when device id is invalid.
@@ -213,14 +224,14 @@ __MC_CLIENT_LIB_API mcResult_t mcCloseDevice(
     uint32_t deviceId
 );
 
-/** Open a new session to a Trustlet. The trustlet with the given UUID has to be available in the flash filesystem.
+/** Open a new session to a Trusted Application. The Trusted Application with the given UUID has to be available in the flash filesystem.
  *
- * Write MCP open message to buffer and notify MobiCore about the availability of a new command.
- * Waits till the MobiCore responses with the new session ID (stored in the MCP buffer).
+ * Write MCP open message to buffer and notify t-base about the availability of a new command.
+ * Waits till t-base responds with the new session ID (stored in the MCP buffer).
  *
  * @param [in,out] session On success, the session data will be returned. Note that session.deviceId has to be the device id of an opened device.
- * @param [in] uuid UUID of the Trustlet to be opened.
- * @param [in] tci TCI buffer for communicating with the trustlet.
+ * @param [in] uuid UUID of the Trusted Application to be opened.
+ * @param [in] tci TCI buffer for communicating with the Trusted Application.
  * @param [in] tciLen Length of the TCI buffer. Maximum allowed value is MC_MAX_TCI_LEN.
  *
  * @return MC_DRV_OK if operation has been successfully completed.
@@ -228,6 +239,7 @@ __MC_CLIENT_LIB_API mcResult_t mcCloseDevice(
  * @return MC_DRV_ERR_UNKNOWN_DEVICE when device id is invalid.
  * @return MC_DRV_ERR_DAEMON_UNREACHABLE when problems with daemon socket occur.
  * @return MC_DRV_ERR_UNKNOWN_DEVICE when daemon returns an error.
+ * @return MC_DRV_ERR_TRUSTED_APPLICATION_NOT_FOUND when Trusted Application or driver cannot be loaded.
  *
  * Uses a Mutex.
  */
@@ -238,17 +250,16 @@ __MC_CLIENT_LIB_API mcResult_t mcOpenSession(
     uint32_t           tciLen
 );
 
-/** Open a new session to a Trustlet. The trustlet will be loaded from the memory
- * buffer
+/** Open a new session to a Trusted Application(Trustlet). The Trusted Application will be loaded from the memory buffer.
  *
- * Write MCP open message to buffer and notify MobiCore about the availability of a new command.
- * Waits till the MobiCore responses with the new session ID (stored in the MCP buffer).
+ * Write MCP open message to buffer and notify t-base about the availability of a new command.
+ * Waits till t-base responds with the new session ID (stored in the MCP buffer).
  *
  * @param [in,out] session On success, the session data will be returned. Note that session.deviceId has to be the device id of an opened device.
  * @param [in] spid Service Provider ID(for Service provider trustlets otherwise ignored)
- * @param [in] trustlet memory buffer containing the trustlet binary
- * @param [in] tlen length of the memory buffer containing the trustlet
- * @param [in] tci TCI buffer for communicating with the trustlet.
+ * @param [in] trustedapp memory buffer containing the Trusted Application binary
+ * @param [in] tlen length of the memory buffer containing the Trusted Application
+ * @param [in] tci TCI buffer for communicating with the Trusted Application.
  * @param [in] tciLen Length of the TCI buffer. Maximum allowed value is MC_MAX_TCI_LEN.
  *
  * @return MC_DRV_OK if operation has been successfully completed.
@@ -256,22 +267,23 @@ __MC_CLIENT_LIB_API mcResult_t mcOpenSession(
  * @return MC_DRV_ERR_UNKNOWN_DEVICE when device id is invalid.
  * @return MC_DRV_ERR_DAEMON_UNREACHABLE when problems with daemon socket occur.
  * @return MC_DRV_ERR_UNKNOWN_DEVICE when daemon returns an error.
+ * @return MC_DRV_ERR_TRUSTED_APPLICATION_NOT_FOUND when Trusted Application cannot be loaded.
  *
  * Uses a Mutex.
  */
 __MC_CLIENT_LIB_API mcResult_t mcOpenTrustlet(
     mcSessionHandle_t  *session,
     mcSpid_t           spid,
-    uint8_t            *trustlet,
+    uint8_t            *trustedapp,
     uint32_t           tLen,
     uint8_t            *tci,
     uint32_t           tciLen
 );
 
 
-/** Close a Trustlet session.
+/** Close a Trusted Application session.
  *
- * Closes the specified MobiCore session. The call will block until the session has been closed.
+ * Closes the specified t-base session. The call will block until the session has been closed.
  *
  * @pre Device deviceId has to be opened in advance.
  *
@@ -309,7 +321,7 @@ __MC_CLIENT_LIB_API mcResult_t mcNotify(
 
 /** Wait for a notification.
  *
- * Wait for a notification issued by the MobiCore for a specific session.
+ * Wait for a notification issued by t-base for a specific session.
  * The timeout parameter specifies the number of milliseconds the call will wait for a notification.
  * If the caller passes 0 as timeout value the call will immediately return. If timeout value is below 0 the call will block
  * until a notification for the session has been received.
@@ -340,7 +352,7 @@ __MC_CLIENT_LIB_API mcResult_t mcWaitNotification(
  * Always returns a buffer of size WSM_SIZE aligned to 4K.
  *
  * @param [in]  deviceId The ID of an opened device to retrieve the WSM from.
- * @param [in]  align The alignment (number of pages) of the memory block (e.g. 0x00000001 for 4kb).
+ * @param [in]  align The alignment (number of pages) of the memory block (e.g. 0x00000001 for 4kB).
  * @param [in]  len Length of the block in bytes.
  * @param [out] wsm Virtual address of the world shared memory block.
  * @param [in]  wsmFlags Platform specific flags describing the memory to be allocated.
@@ -384,19 +396,19 @@ __MC_CLIENT_LIB_API mcResult_t mcFreeWsm(
 );
 
 /**
- * Map additional bulk buffer between a Trustlet Connector (TLC) and the Trustlet (TL) for a session.
- * Memory allocated in user space of the TLC can be mapped as additional communication channel
- * (besides TCI) to the Trustlet. Limitation of the Trustlet memory structure apply: only 6 chunks can be mapped
+ * Map additional bulk buffer between a Client Application (CA) and the Trusted Application (TA) for a session.
+ * Memory allocated in user space of the CA can be mapped as additional communication channel
+ * (besides TCI) to the Trusted Application. Limitation of the Trusted Application memory structure apply: only 6 chunks can be mapped
  * with a maximum chunk size of 1 MiB each.
  *
- * @attention It is up to the application layer (TLC) to inform the Trustlet about the additional mapped bulk memory.
+ * @attention It is up to the application layer (CA) to inform the Trusted Application about the additional mapped bulk memory.
  *
  * @param [in] session Session handle with information of the deviceId and the sessionId. The
  * given buffer is mapped to the session specified in the sessionHandle.
- * @param [in] buf Virtual address of a memory portion (relative to TLC) to be shared with the Trustlet, already includes a possible offset!
+ * @param [in] buf Virtual address of a memory portion (relative to CA) to be shared with the Trusted Application, already includes a possible offset!
  * @param [in] len length of buffer block in bytes.
- * @param [out] mapInfo Information structure about the mapped Bulk buffer between the TLC (Nwd) and
- * the TL (Swd).
+ * @param [out] mapInfo Information structure about the mapped Bulk buffer between the CA (NWd) and
+ * the TA (SWd).
  *
  * @return MC_DRV_OK if operation has been successfully completed.
  * @return MC_DRV_INVALID_PARAMETER if a parameter is invalid.
@@ -415,16 +427,16 @@ __MC_CLIENT_LIB_API mcResult_t mcMap(
 );
 
 /**
- * Remove additional mapped bulk buffer between Trustlet Connector (TLC) and the Trustlet (TL) for a session.
+ * Remove additional mapped bulk buffer between Client Application (CA) and the Trusted Application (TA) for a session.
  *
  * @attention The bulk buffer will immediately be unmapped from the session context.
- * @attention The application layer (TLC) must inform the TL about unmapping of the additional bulk memory before calling mcUnmap!
+ * @attention The application layer (CA) must inform the TA about unmapping of the additional bulk memory before calling mcUnmap!
  *
  * @param [in] session Session handle with information of the deviceId and the sessionId. The
  * given buffer is unmapped from the session specified in the sessionHandle.
- * @param [in] buf Virtual address of a memory portion (relative to TLC) shared with the TL, already includes a possible offset!
- * @param [in] mapInfo Information structure about the mapped Bulk buffer between the TLC (Nwd) and
- * the TL (Swd).
+ * @param [in] buf Virtual address of a memory portion (relative to CA) shared with the TA, already includes a possible offset!
+ * @param [in] mapInfo Information structure about the mapped Bulk buffer between the CA (NWd) and
+ * the TA (SWd).
  * @attention The clientlib currently ignores the len field in mapInfo.
  *
  * @return MC_DRV_OK if operation has been successfully completed.
@@ -463,11 +475,11 @@ __MC_CLIENT_LIB_API mcResult_t mcDriverCtrl(
 );
 
 /**
- * Get additional error information of the last error that occured on a session.
+ * Get additional error information of the last error that occurred on a session.
  * After the request the stored error code will be deleted.
  *
  * @param [in] session Session handle with information of the deviceId and the sessionId.
- * @param [out] lastErr >0 Trustlet has terminated itself with this value, <0 Trustlet is dead because of an error within the MobiCore (e.g. Kernel exception).
+ * @param [out] lastErr >0 Trusted Application has terminated itself with this value, <0 Trusted Application is dead because of an error within t-base (e.g. Kernel exception).
  * See also notificationPayload_t enum in MCI definition at "mcinq.h".
  *
  * @return MC_DRV_OK if operation has been successfully completed.
@@ -481,10 +493,10 @@ __MC_CLIENT_LIB_API mcResult_t mcGetSessionErrorCode(
 );
 
 /**
- * Get MobiCore version information of a device.
+ * Get t-base version information of a device.
  *
  * @param [in] deviceId of an open device.
- * @param [out] versionInfo MobiCore version info.
+ * @param [out] versionInfo t-base version info.
  *
  * @return MC_DRV_OK if operation has been successfully completed.
  * @return MC_DRV_ERR_UNKNOWN_DEVICE when device is not open.
@@ -495,7 +507,9 @@ __MC_CLIENT_LIB_API mcResult_t mcGetMobiCoreVersion(
     uint32_t  deviceId,
     mcVersionInfo_t *versionInfo
 );
+#ifndef WIN32
 #pragma GCC visibility pop
+#endif
 #endif /** MCDRIVER_H_ */
 
 /** @} */

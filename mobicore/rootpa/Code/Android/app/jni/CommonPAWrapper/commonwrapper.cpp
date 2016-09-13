@@ -118,8 +118,8 @@ JNIEXPORT jint JNICALL Java_com_gd_mobicore_pa_jni_CommonPAWrapper_executeCmpCom
         delete [] commands[i].contentP;
         free(responses[i].contentP); // this is reserved with malloc
     }
-    delete commands;
-    delete responses;
+    delete [] commands;
+    delete [] responses;
     LOGD("<<Java_com_gd_mobicore_pa_jni_CommonPAWrapper_executeCmpCommands %d\n", ret);
 
     return ret;
@@ -140,7 +140,7 @@ JNIEXPORT jint JNICALL Java_com_gd_mobicore_pa_jni_CommonPAWrapper_executeCmpCom
 JNIEXPORT jint JNICALL Java_com_gd_mobicore_pa_jni_CommonPAWrapper_getVersion
   (JNIEnv* env, jobject, jbyteArray productId, jobject keys, jobject values)
 {
-
+    LOGD(">>Java_com_gd_mobicore_pa_jni_CommonPAWrapper_getVersion %x %x %x\n", productId, keys, values);
     int ret=ROOTPA_OK;
     int tag=0;
     mcVersionInfo_t version;
@@ -177,6 +177,7 @@ JNIEXPORT jint JNICALL Java_com_gd_mobicore_pa_jni_CommonPAWrapper_getVersion
             }
         }
     }
+    LOGD("<<Java_com_gd_mobicore_pa_jni_CommonPAWrapper_getVersion %x %x %x\n", productId, keys, values);
     return ret;
 }
 
@@ -268,9 +269,27 @@ JNIEXPORT jint JNICALL Java_com_gd_mobicore_pa_jni_CommonPAWrapper_getSPContaine
             {
                 for(int i=0; i<spContainerStructure.nbrOfTlts;i++)
                 {
+                    LOGD("TLT %d/%d %.2x%.2x%.2x%.2x-%.2x%.2x-%.2x%.2x-%.2x%.2x-%.2x%.2x%.2x%.2x%.2x%.2x",i, spContainerStructure.nbrOfTlts, spContainerStructure.tltContainers[i].uuid.value[0],
+                                                                                                             spContainerStructure.tltContainers[i].uuid.value[1],
+                                                                                                             spContainerStructure.tltContainers[i].uuid.value[2],
+                                                                                                             spContainerStructure.tltContainers[i].uuid.value[3],
+                                                                                                             spContainerStructure.tltContainers[i].uuid.value[4],
+                                                                                                             spContainerStructure.tltContainers[i].uuid.value[5],
+                                                                                                             spContainerStructure.tltContainers[i].uuid.value[6],
+                                                                                                             spContainerStructure.tltContainers[i].uuid.value[7],
+                                                                                                             spContainerStructure.tltContainers[i].uuid.value[8],
+                                                                                                             spContainerStructure.tltContainers[i].uuid.value[9],
+                                                                                                             spContainerStructure.tltContainers[i].uuid.value[10],
+                                                                                                             spContainerStructure.tltContainers[i].uuid.value[11],
+                                                                                                             spContainerStructure.tltContainers[i].uuid.value[12],
+                                                                                                             spContainerStructure.tltContainers[i].uuid.value[13],
+                                                                                                             spContainerStructure.tltContainers[i].uuid.value[14],
+                                                                                                             spContainerStructure.tltContainers[i].uuid.value[15]);
+
                     ret=jniHelp.setIntToArray(&trustletStates, i, spContainerStructure.tltContainers[i].state);
                     jbyteArray uuid = jniHelp.byteArrayToJByteArray(spContainerStructure.tltContainers[i].uuid.value, UUID_LENGTH);
                     envP->SetObjectArrayElement(uuidArray, i, (jobject) uuid);
+                    envP->DeleteLocalRef(uuid);
                 }
             }
             else
@@ -334,8 +353,8 @@ void stateUpdateCallback(ProvisioningState state, rootpaerror_t error, tltInfo_t
 
     if( obj_!=NULL && (PROVISIONING_STATE_THREAD_EXITING == state) )
     {
-        LOGD("deleting global reference to obj_");
-        envP->DeleteGlobalRef(obj_);
+        LOGD("deleting global reference to obj_ (envP %ld)", envP);
+        if(envP!=NULL) envP->DeleteGlobalRef(obj_);
         obj_=NULL;
     }
 
@@ -378,6 +397,11 @@ void storeCallbackMethodIds(JNIEnv* envP)
         LOGE("storeCallbackMethodIds trustletInstallCallback_==NULL");
     }
 
+    if(cls!=NULL)
+    {
+        envP->DeleteLocalRef(cls);
+    }
+
     LOGD("<<storeCallbackMethodIds\n");
 }
 
@@ -403,7 +427,6 @@ void setFilesPath(JNIEnv* envP, jobject obj)
         return;
     }
 
-
     jobject jpath = envP->CallObjectMethod(obj, getFilesDirPath);
     if(jpath!=NULL)
     {
@@ -421,6 +444,11 @@ void setFilesPath(JNIEnv* envP, jobject obj)
     {
         LOGE("setFilesPath jpath==NULL, using hardcoded paths");
         setPaths(HARDCODED_STORAGEPATH, CERT_PATH);
+    }
+
+    if(cls!=NULL)
+    {
+        envP->DeleteLocalRef(cls);
     }
 
     LOGD("<<setFilesPath\n");
@@ -488,6 +516,14 @@ rootpaerror_t getSystemInfoCallback(osInfo_t* osSpecificInfoP)
             copyElement(envP, &osSpecificInfoP->modelP, model);
             copyElement(envP, &osSpecificInfoP->versionP, version);
 
+            envP->DeleteLocalRef(systemInfo);
+            if(imeiEsn!=NULL) envP->DeleteLocalRef(imeiEsn);
+            if(mno!=NULL) envP->DeleteLocalRef(mno);
+            if(brand!=NULL) envP->DeleteLocalRef(brand);
+            if(manufacturer!=NULL) envP->DeleteLocalRef(manufacturer);
+            if(hw!=NULL) envP->DeleteLocalRef(hw);
+            if(model!=NULL) envP->DeleteLocalRef(model);
+            if(version!=NULL) envP->DeleteLocalRef(version);
         }
     }
 
@@ -530,7 +566,17 @@ JNIEXPORT jint JNICALL Java_com_gd_mobicore_pa_jni_CommonPAWrapper_doProvisionin
 
 
 JNIEXPORT jint JNICALL Java_com_gd_mobicore_pa_jni_CommonPAWrapper_installTrustlet
-  (JNIEnv* envP, jobject obj, jint spid, jbyteArray uuid, jint requestDataType, jbyteArray tltOrKeyData, jbyteArray seAddress)
+(JNIEnv* envP, jobject obj,
+jint spid,
+jbyteArray uuid,
+jint requestDataType,
+jbyteArray tltOrKeyData,
+jint minTltVersion,
+jbyteArray tltPukHash,
+jint memoryType,
+jint numberOfInstances,
+jint flags,
+jbyteArray seAddress)
 {
     LOGD(">>Java_com_gd_mobicore_pa_jni_CommonPAWrapper_installTrustlet %ld %ld\n", (long int) stateUpdateCallback, (long int) getSystemInfoCallback);
     setFilesPath(envP, obj);
@@ -552,6 +598,12 @@ JNIEXPORT jint JNICALL Java_com_gd_mobicore_pa_jni_CommonPAWrapper_installTrustl
         trustletInstallationData_t tltData;
         tltData.dataP=(uint8_t*) jniHelp.jByteArrayToCByteArray(tltOrKeyData, &tltData.dataLength);
         tltData.dataType=(TltInstallationRequestDataType) requestDataType;
+        tltData.minTltVersion=minTltVersion;
+        tltData.tltPukHashP=(uint8_t*) jniHelp.jByteArrayToCByteArray(tltPukHash, &tltData.tltPukHashLength);
+        tltData.memoryType=memoryType;
+        tltData.numberOfInstances=numberOfInstances;
+        tltData.flags=flags;
+
         uint32_t uuidLength=0;
         uint8_t* uuidP=(uint8_t*) jniHelp.jByteArrayToCByteArray(uuid, &uuidLength);
         if(UUID_LENGTH != uuidLength){

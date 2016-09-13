@@ -21,11 +21,7 @@ LOCAL_MODULE	:= Common
 # Header files required by components including this module
 LOCAL_EXPORT_C_INCLUDES	+= $(LOCAL_PATH)
 
-# Enable logging
-# LOCAL_SHARED_LIBRARIES += liblog
-#
-# LOCAL_CFLAGS += -DLOG_ANDROID
-#
-# LOCAL_C_INCLUDES += $(LOCAL_PATH)/../common/LogWrapper
+# Import logwrapper
+#include $(COMP_PATH_Logwrapper)/Android.mk
 
 include $(BUILD_STATIC_LIBRARY)

@@ -55,8 +55,13 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PLATFORM_TYPES_NAMESPACE "http://www.mcore.gi-de.com/2012/02/schema/MCPlatformTypes"
 
 #define XSD_PATH_MAX_LEN 256
-
+#define INT_BUFFER_LENGTH 11
 #define UNKNOWN_ID 0xFFFFFFFF
+
+#define EXTERNAL_MEMORY 2
+#define DEFAULT_MEMORY_TYPE EXTERNAL_MEMORY
+#define DEFAULT_NUMBER_OF_INSTANCES 1
+#define DEFAULT_FLAGS 0
 
 typedef enum
 {
@@ -149,9 +154,9 @@ bool addCommandResultData(xmlNodePtr resultListNode, int id,  char* commandResul
     if(NULL==commandResultNode) return false;
 
     bool retValue=true;
-    char intBuffer[11];
+    char intBuffer[INT_BUFFER_LENGTH];
 
-    sprintf(intBuffer,"%u",(uint32_t) id);
+    snprintf(intBuffer,INT_BUFFER_LENGTH,"%u",(uint32_t) id);
     if(xmlNewProp(commandResultNode, BAD_CAST "id", BAD_CAST intBuffer)==NULL) return false;
 
     if(commandResultP==NULL)
@@ -165,7 +170,7 @@ bool addCommandResultData(xmlNodePtr resultListNode, int id,  char* commandResul
         }
         else if(errorDetail!=0)
         {
-            sprintf(intBuffer,"%u",errorDetail);
+            snprintf(intBuffer,INT_BUFFER_LENGTH,"%u",errorDetail);
             if(xmlNewProp(errorNode, BAD_CAST "errorDetail", BAD_CAST intBuffer)==NULL)
             {
                 retValue=false;
@@ -348,6 +353,15 @@ rootpaerror_t handleCmpResponses(uint32_t maxNumberOfCmpResponses, CmpMessage* c
     LOGD(">>handleCmpResponses %d", maxNumberOfCmpResponses);
     rootpaerror_t ret=ROOTPA_OK;
     uint32_t i;
+    if(cmpResponsesP == NULL)
+    {
+        if(maxNumberOfCmpResponses>0)
+        {
+            LOGE("maxNumberOfCmpResponses %d while pointer is NULL", maxNumberOfCmpResponses);
+            return ROOTPA_ERROR_INTERNAL;
+        }
+        return ROOTPA_OK;
+    }
 
     for(i=0; (i<maxNumberOfCmpResponses) && (ROOTPA_OK==ret); i++)
     {
@@ -452,16 +466,26 @@ rootpaerror_t handleUploadResponses(uint32_t numberOfUploadResponses, CommonMess
 {
     LOGD(">>handleUploadResponses %d", numberOfUploadResponses);
     rootpaerror_t ret=ROOTPA_OK;
-
+    char zero=0;
     uint32_t i;
+    if(uploadResponsesP == NULL)
+    {
+        if(numberOfUploadResponses>0)
+        {
+            LOGE("numberOfUploadResponses %d while pointer is NULL", numberOfUploadResponses);
+            return ROOTPA_ERROR_INTERNAL;
+        }
+        return ROOTPA_OK;
+    }
+
     for(i=0; (i < numberOfUploadResponses) && (ROOTPA_OK==ret); i++)
     {
         char* encodedResponseP=NULL;
         if(ROOTPA_OK == uploadResponsesP[i].ret)
         {
             // in success case TLT_UPLOAD and SO_UPLOAD return "0" (encoded) in the resultValue
-            // field (discussed and agreed with Dimi Jan 10, 2013 */
-            encodedResponseP=base64EncodeAddEndZero("0", 1);
+            // field (discussed and agreed with Dimi Jan 10, 2013)
+            encodedResponseP=base64EncodeAddEndZero(&zero, 1);
         }
 
         if( addCommandResultData(rspResultElementP, uploadResponsesP[i].id, encodedResponseP,  uploadResponsesP[i].ret, uploadResponsesP[i].intRet )==false)
@@ -538,6 +562,7 @@ rootpaerror_t handleCommandAndFillResponse(xmlDocPtr xmlCommandP, xmlDocPtr xmlR
 
         if(commandType != CMP &&
           false == ignoreError &&
+          uploadCommandsP &&
           uploadCommandsP[numberOfUploadCommands-1].ret != ROOTPA_OK) break; // since upload commands are already executed in this loop
     }
 
@@ -590,7 +615,7 @@ rootpaerror_t handleCommandAndFillResponse(xmlDocPtr xmlCommandP, xmlDocPtr xmlR
     int i;
     for(i=0; i<numberOfCmpCommands; i++)
     {
-        free(cmpCommandsP[i].contentP);
+        if(cmpCommandsP) free(cmpCommandsP[i].contentP);
         if(cmpResponsesP) free(cmpResponsesP[i].contentP);
     }
     free(cmpCommandsP);
@@ -680,12 +705,15 @@ cleanup:
     if (parserCtxtP) xmlSchemaFreeParserCtxt(parserCtxtP);
     if (schemaP) xmlSchemaFree(schemaP);
     if (validCtxtP) xmlSchemaFreeValidCtxt(validCtxtP);
- #else // !LIBXML_SCHEMAS_ENABLED
-    result=0;
- #endif // LIBXML_SCHEMAS_ENABLED
 
     LOGD("<<validXmlMessage %d", result);
     return ((0==result)?true:false);
+
+ #else // !LIBXML_SCHEMAS_ENABLED
+    LOGD("<<validXmlMessage");
+    return true;
+ #endif // LIBXML_SCHEMAS_ENABLED
+
 }
 
 uint8_t* validateDumpAndFree(xmlDocPtr xmlResponseP)
@@ -697,7 +725,8 @@ uint8_t* validateDumpAndFree(xmlDocPtr xmlResponseP)
     }
     int size=0;
     xmlChar* dumpP;
-    xmlDocDumpMemory(xmlResponseP, &dumpP, &size);
+//    xmlDocDumpMemory(xmlResponseP, &dumpP, &size);
+      xmlDocDumpMemoryEnc(xmlResponseP, &dumpP, &size, "UTF-8");
     if(dumpP!=NULL)
     {
         // doing this copy only because libxml2 documentation tells to
@@ -707,7 +736,7 @@ uint8_t* validateDumpAndFree(xmlDocPtr xmlResponseP)
         // be on the safe side
 
         dumpedP=malloc(size+1);
-        strcpy((char*) dumpedP, (char*) dumpP);
+        strncpy((char*) dumpedP, (char*) dumpP, size+1);
         xmlFree(dumpP);
     }
     xmlFreeDoc(xmlResponseP);
@@ -752,7 +781,7 @@ rootpaerror_t handleXmlMessage(const char* messageP, const char** responseP)
         // attempting to parse the message anyway.
     }
 
-    xmlDocPtr xmlResponseP=createXmlResponse(ret);
+    xmlDocPtr xmlResponseP=createXmlResponse();
 
 // parse received command
 
@@ -834,7 +863,7 @@ rootpaerror_t fillSystemInfo(xmlNodePtr systemInfoNode, const osInfo_t* osSpecif
 rootpaerror_t fillMcVersion(xmlNodePtr mcVersionNode, int mcVersionTag, const mcVersionInfo_t* mcVersionP)
 {
     LOGD(">>fillMcVersion");
-    char intBuffer[11];
+    char intBuffer[INT_BUFFER_LENGTH];
 
     xmlSetStructuredErrorFunc(NULL, NULL);
     xmlSetGenericErrorFunc(NULL, handleError);
@@ -843,28 +872,28 @@ rootpaerror_t fillMcVersion(xmlNodePtr mcVersionNode, int mcVersionTag, const mc
 
     if(xmlNewProp(mcVersionNode, BAD_CAST "productId", BAD_CAST mcVersionP->productId)==NULL) return ROOTPA_ERROR_XML;
 
-    sprintf(intBuffer,"%u",mcVersionP->versionMci);
+    snprintf(intBuffer,INT_BUFFER_LENGTH,"%u",mcVersionP->versionMci);
     if(xmlNewProp(mcVersionNode, BAD_CAST "versionMci", BAD_CAST intBuffer)==NULL) return ROOTPA_ERROR_XML;
 
-    sprintf(intBuffer,"%u",mcVersionP->versionSo);
+    snprintf(intBuffer,INT_BUFFER_LENGTH,"%u",mcVersionP->versionSo);
     if(xmlNewProp(mcVersionNode, BAD_CAST "versionSo", BAD_CAST intBuffer)==NULL) return ROOTPA_ERROR_XML;
 
-    sprintf(intBuffer,"%u",mcVersionP->versionMclf);
+    snprintf(intBuffer,INT_BUFFER_LENGTH,"%u",mcVersionP->versionMclf);
     if(xmlNewProp(mcVersionNode, BAD_CAST "versionMclf", BAD_CAST intBuffer)==NULL) return ROOTPA_ERROR_XML;
 
-    sprintf(intBuffer,"%u",mcVersionP->versionContainer);
+    snprintf(intBuffer,INT_BUFFER_LENGTH,"%u",mcVersionP->versionContainer);
     if(xmlNewProp(mcVersionNode, BAD_CAST "versionContainer", BAD_CAST intBuffer)==NULL) return ROOTPA_ERROR_XML;
 
-    sprintf(intBuffer,"%u",mcVersionP->versionMcConfig);
+    snprintf(intBuffer,INT_BUFFER_LENGTH,"%u",mcVersionP->versionMcConfig);
     if(xmlNewProp(mcVersionNode, BAD_CAST "versionMcConfig", BAD_CAST intBuffer)==NULL) return ROOTPA_ERROR_XML;
 
-    sprintf(intBuffer,"%u",mcVersionP->versionTlApi);
+    snprintf(intBuffer,INT_BUFFER_LENGTH,"%u",mcVersionP->versionTlApi);
     if(xmlNewProp(mcVersionNode, BAD_CAST "versionTlApi", BAD_CAST intBuffer)==NULL) return ROOTPA_ERROR_XML;
 
-    sprintf(intBuffer,"%u",mcVersionP->versionDrApi);
+    snprintf(intBuffer,INT_BUFFER_LENGTH,"%u",mcVersionP->versionDrApi);
     if(xmlNewProp(mcVersionNode, BAD_CAST "versionDrApi", BAD_CAST intBuffer)==NULL) return ROOTPA_ERROR_XML;
 
-    sprintf(intBuffer,"%u",mcVersionP->versionCmp);
+    snprintf(intBuffer,INT_BUFFER_LENGTH,"%u",mcVersionP->versionCmp);
     if(xmlNewProp(mcVersionNode, BAD_CAST "versionCmp", BAD_CAST intBuffer)==NULL) return ROOTPA_ERROR_XML;
 
     LOGD("<<fillMcVersion");
@@ -873,11 +902,12 @@ rootpaerror_t fillMcVersion(xmlNodePtr mcVersionNode, int mcVersionTag, const mc
 
 rootpaerror_t buildXmlTrustletInstallationRequest(const char** responseP, trustletInstallationData_t data )
 {
+    char intBuffer[INT_BUFFER_LENGTH];
     LOGD(">>buildXmlTrustletInstallationRequest %ld (%ld %d %d)", (long int) responseP, (long int) data.dataP, data.dataLength, data.dataType);
     rootpaerror_t ret=ROOTPA_OK;
     if(NULL ==  responseP) return ROOTPA_ERROR_ILLEGAL_ARGUMENT; // data content checked earlier in commandhandler.c
 
-    xmlDocPtr xmlResponseDocP=createXmlResponse(ret);
+    xmlDocPtr xmlResponseDocP=createXmlResponse();
     xmlNodePtr rspRootElementP = xmlDocGetRootElement(xmlResponseDocP);
     if(NULL==rspRootElementP) return ROOTPA_ERROR_XML;
 
@@ -888,18 +918,71 @@ rootpaerror_t buildXmlTrustletInstallationRequest(const char** responseP, trustl
     char* encodedDataP=base64EncodeAddEndZero((char*) data.dataP, data.dataLength);
     if(NULL==encodedDataP)
     {
-        LOGE("buildXmlTrustletInstallationRequest: base64 encoding failed");
+        LOGE("buildXmlTrustletInstallationRequest: base64 encoding of data failed");
         return ROOTPA_ERROR_INTERNAL;
     }
 
     if(data.dataType == REQUEST_DATA_TLT)
     {
-        mcDataNode = xmlNewChild(systemInfoNode, nameSpace_, BAD_CAST "tltBinary", BAD_CAST encodedDataP);
+        mcDataNode = xmlNewChild(systemInfoNode, nameSpace_, BAD_CAST "trustletAxf", BAD_CAST encodedDataP);
+        if(data.memoryType != DEFAULT_MEMORY_TYPE)
+        {
+            snprintf(intBuffer,INT_BUFFER_LENGTH,"%d",data.memoryType);
+            if(xmlNewProp(mcDataNode, BAD_CAST "memoryType", BAD_CAST intBuffer)==NULL)
+            {
+                free(encodedDataP);
+                return ROOTPA_ERROR_XML;
+            }
+        }
+
+        if(data.numberOfInstances != DEFAULT_NUMBER_OF_INSTANCES)
+        {
+            snprintf(intBuffer,INT_BUFFER_LENGTH,"%d",data.numberOfInstances);
+            if(xmlNewProp(mcDataNode, BAD_CAST "numberOfInstances", BAD_CAST intBuffer)==NULL)
+            {
+                free(encodedDataP);
+                return ROOTPA_ERROR_XML;
+            }
+        }
+
+        if(data.flags != DEFAULT_FLAGS)
+        {
+            snprintf(intBuffer,INT_BUFFER_LENGTH,"%d",data.flags);
+            if(xmlNewProp(mcDataNode, BAD_CAST "flags", BAD_CAST intBuffer)==NULL)
+            {
+                free(encodedDataP);
+                return ROOTPA_ERROR_XML;
+            }
+        }
     }
     else
     {
-        mcDataNode = xmlNewChild(systemInfoNode, nameSpace_, BAD_CAST "tltEncryptionKey", BAD_CAST encodedDataP);
+        mcDataNode = xmlNewChild(systemInfoNode, nameSpace_, BAD_CAST "trustletEncryptionKey", BAD_CAST encodedDataP);
     }
+
+    snprintf(intBuffer,INT_BUFFER_LENGTH,"%d",data.minTltVersion);
+    if(xmlNewProp(mcDataNode, BAD_CAST "minTltVersion", BAD_CAST intBuffer)==NULL)
+    {
+        free(encodedDataP);
+        return ROOTPA_ERROR_XML;
+    }
+
+    char* pukHashStringP=base64EncodeAddEndZero((char*) data.tltPukHashP, data.tltPukHashLength);
+    if(NULL==pukHashStringP)
+    {
+        LOGE("buildXmlTrustletInstallationRequest: base64 encoding of PukHash failed");
+        free(encodedDataP);
+        return ROOTPA_ERROR_INTERNAL;
+    }
+    if(xmlNewProp(mcDataNode, BAD_CAST "tltPukHash", BAD_CAST pukHashStringP)==NULL)
+    {
+        LOGE("buildXmlTrustletInstallationRequest: xmlNewProp failed");
+        free(pukHashStringP);
+        free(encodedDataP);
+        return ROOTPA_ERROR_XML;
+    }
+
+    free(pukHashStringP);
     free(encodedDataP);
     if(NULL==mcDataNode) return ROOTPA_ERROR_XML;
 
@@ -927,7 +1010,7 @@ rootpaerror_t buildXmlSystemInfo(const char** responseP, int mcVersionTag, const
     xmlThrDefSetStructuredErrorFunc(NULL, NULL);
     xmlThrDefSetGenericErrorFunc(NULL, handleError);
 
-    xmlDocPtr xmlResponseDocP=createXmlResponse(ret);
+    xmlDocPtr xmlResponseDocP=createXmlResponse();
     xmlNodePtr rspRootElementP = xmlDocGetRootElement(xmlResponseDocP);
     if(NULL==rspRootElementP) return ROOTPA_ERROR_XML;
 
@@ -970,13 +1053,13 @@ void setXsdPaths(const char* xsdpathP)
 
     if (xsdpathP!=NULL && strlen(xsdpathP)+1+sizeof(ENROLLMENT_SERVICE_XSD_NAME)<XSD_PATH_MAX_LEN) // ENROLLMENT_SERVICE_XSD_NAME is the longer of the two
     {
-        strcpy(enrollmentServiceFullPath_, xsdpathP);
-        strcpy(platformTypesFullPath_, xsdpathP);
+        strncpy(enrollmentServiceFullPath_, xsdpathP, XSD_PATH_MAX_LEN);
+        strncpy(platformTypesFullPath_, xsdpathP, XSD_PATH_MAX_LEN);
 
-        strcat(enrollmentServiceFullPath_, "/");
-        strcat(platformTypesFullPath_, "/");
+        strncat(enrollmentServiceFullPath_, "/", XSD_PATH_MAX_LEN-strlen(xsdpathP));
+        strncat(platformTypesFullPath_, "/", XSD_PATH_MAX_LEN-strlen(xsdpathP));
     }
 
-    strcat(enrollmentServiceFullPath_, ENROLLMENT_SERVICE_XSD_NAME);
-    strcat(platformTypesFullPath_, PLATFORM_TYPES_XSD_NAME);
+    strncat(enrollmentServiceFullPath_, ENROLLMENT_SERVICE_XSD_NAME, XSD_PATH_MAX_LEN-strlen(enrollmentServiceFullPath_));
+    strncat(platformTypesFullPath_, PLATFORM_TYPES_XSD_NAME, XSD_PATH_MAX_LEN-strlen(platformTypesFullPath_));
 }
