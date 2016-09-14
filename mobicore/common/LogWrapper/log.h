@@ -60,6 +60,10 @@
  * Binary logging, line-wise output to LOG_I
  */
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+
 #define EOL "\n"
 #define DUMMY_FUNCTION()    do{}while(0)
 
